@@ -1,4 +1,8 @@
 #include <SoftwareSerial.h>
+#include <LiquidCrystal.h>
+
+const int rs = 7, en = 6, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
+LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 
 SoftwareSerial OBD(10, 11); // RX, TX
 
@@ -11,6 +15,9 @@ char expResponse[5] = "410C";
 void setup() {
   Serial.begin(9600);
   OBD.begin(9600);
+  lcd.begin(16, 2);
+  lcd.setCursor(0, 1);
+  lcd.print("RPM: ");
 }
 
 void loop() { 
@@ -31,6 +38,12 @@ void loop() {
       Serial.println(vehicleRPM);
     }
     else Serial.println("");
+
+    lcd.setCursor(5, 1);
+    //Clear the old RPM data, and then move the cursor position back.
+    lcd.print("           ");
+    lcd.setCursor(5, 1);
+    lcd.print(vehicleRPM);
   }
   delay(200);
 }
