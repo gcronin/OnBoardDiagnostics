@@ -3,7 +3,6 @@
 
 const int rs = 7, en = 6, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
-
 SoftwareSerial OBD(10, 11); // RX, TX
 
 //This is a character buffer that will store the data from the serial port
@@ -36,14 +35,13 @@ void loop() {
     if(vehicleRPM != -1) {
       Serial.print("  RPM: ");
       Serial.println(vehicleRPM);
+      lcd.setCursor(5, 1);
+      //Clear the old RPM data, and then move the cursor position back.
+      lcd.print("           ");
+      lcd.setCursor(5, 1);
+      lcd.print(vehicleRPM);
     }
     else Serial.println("");
-
-    lcd.setCursor(5, 1);
-    //Clear the old RPM data, and then move the cursor position back.
-    lcd.print("           ");
-    lcd.setCursor(5, 1);
-    lcd.print(vehicleRPM);
   }
   delay(200);
 }
@@ -52,7 +50,7 @@ void loop() {
 // and only exits when a carriage return character is seen. Once the carriage return
 // string is detected, the rxData buffer is null terminated (so we can treat it as a string)
 // and the rxData index is reset to 0 so that the next string can be copied.
-void getResponse(int timeout){
+void getResponse(){
   char inChar=0;
   //Keep reading characters until we get a carriage return
   while(inChar != '\r'){
@@ -88,10 +86,6 @@ void getResponse(int timeout){
   }
 }
 
-void getResponse(void){
-  getResponse(100);
-}
-
 //Look for the expected response in an array of characters.  Return the
 //array index just after the expected response or -1 if not found.
 int findSync(void) {
@@ -113,4 +107,4 @@ int findSync(void) {
     location++;
   }
   return -1;
-}
+}+
