@@ -3,53 +3,105 @@
 
 const int rs = 7, en = 6, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
-SoftwareSerial OBD(10, 11); // RX, TX
+SoftwareSerial OBD(8, 9); // RX, TX
+
+const boolean useSerial = true;
+const boolean useLCD = false;
 
 //This is a character buffer that will store the data from the serial port
 char rxData[20];
 char rxIndex=0;
-String data="010C";
-char expResponse[5] = "410C";
 
-int numModes = 2;
-volatile int modeA = 0;
-volatile int modeB = 0;
+// Setup the available OBD codes and associated names
+const int numModes = 6;
+volatile int mode = 2; //start with RPM
+String PIDcodes[numModes] = {"0104", "0105", "010C", "010D", "010F", "0111"};
+String PIDnames[numModes] = {"Load %", "EngTemp", "RPM", "Speed", "AirTemp", "Throttle"};
+char expResponse[5];
 
 void setup() {
   pinMode(2, INPUT_PULLUP);
   pinMode(3, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(2), incrementA, LOW);
-  attachInterrupt(digitalPinToInterrupt(3), incrementB, LOW);
-  Serial.begin(9600);
+  attachInterrupt(digitalPinToInterrupt(2), incrementMode, LOW);
+  attachInterrupt(digitalPinToInterrupt(3), decrementMode, LOW);
   OBD.begin(9600);
-  lcd.begin(16, 2);
-  lcd.setCursor(0, 1);
-  lcd.print("RPM: ");
+  
+  if(useSerial) Serial.begin(9600);
+  if(useLCD) lcd.begin(16, 2);
 }
 
 void loop() { 
-  OBD.println(data);  //request data from OBD
+  //request data from OBD
+  OBD.println(PIDcodes[mode]);  
+
+  //first response repeats sent data
+  //second response is what we want
   getResponse();
   getResponse();
+
+  //setup expected response code... same as PID with '4' at beginning
+  PIDcodes[mode].toCharArray(expResponse, 5);
+  expResponse[0] = '4';
+
+  // find expected response code in received response
   int syncLocation = findSync();
+  
+  // if we actually found the expected response
   if(syncLocation != -1) {
-    for(int i=0; i<20; i++)
-    { 
-      Serial.print(rxData[i]);
+    // print full response and index of expected response
+    if(useSerial) {
+      for(int i=0; i<20; i++)
+      { 
+        Serial.print(rxData[i]);
+      }
+      Serial.print(" Index: ");
+      Serial.print(syncLocation);
     }
-    Serial.print(" Index: ");
-    Serial.print(syncLocation);
-    int vehicleRPM = strtol(&rxData[syncLocation],0,16)/4;
-    if(vehicleRPM != -1) {
-      Serial.print("  RPM: ");
-      Serial.println(vehicleRPM);
-      lcd.setCursor(5, 1);
-      //Clear the old RPM data, and then move the cursor position back.
-      lcd.print("           ");
-      lcd.setCursor(5, 1);
-      lcd.print(vehicleRPM);
+
+    //parse response for out data
+    int data;
+    switch(mode) {
+      case 0: // engine load, percent
+        data = strtol(&rxData[syncLocation],0,16)*100/255;
+        break;
+      case 1: // engine temp, oC
+        data = strtol(&rxData[syncLocation],0,16)-40;
+        break;
+      case 2: // RPM
+        data = strtol(&rxData[syncLocation],0,16)/4;
+        break;
+      case 3: // speed km/hr
+        data = strtol(&rxData[syncLocation],0,16);
+        break;
+      case 4: // air temp, oC
+        data = strtol(&rxData[syncLocation],0,16)-40;
+        break;
+      case 5: // throttle, percent
+        data = strtol(&rxData[syncLocation],0,16)*100/255;
+        break;
+      default:
+        data = -1;
+        break;        
     }
-    else Serial.println("");
+
+    if(data != -1) {
+      if(useSerial) {
+        Serial.print("  ");
+        Serial.print(PIDnames[mode]);
+        Serial.print("  ");
+        Serial.println(data);
+      }
+
+      if(useLCD) {
+        lcd.setCursor(0, 0);
+        lcd.print(PIDnames[mode]);
+        lcd.setCursor(0, 1);
+        lcd.print("           ");
+        lcd.setCursor(0, 1);
+        lcd.print(data);
+      }
+    }
+    else if(useSerial) Serial.println("");
   }
   delay(200);
 }
@@ -117,7 +169,7 @@ int findSync(void) {
   return -1;
 }
 
-void incrementA()
+void incrementMode()
 {
   //Static variable initialized only first time increment called, persists between calls.
   static unsigned long last_interrupt_time = 0;
@@ -125,12 +177,12 @@ void incrementA()
   // If interrupts come faster than 200ms, assume it's a bounce and ignore
   if (interrupt_time - last_interrupt_time > 200) 
   {
-    modeA = (modeA+1)%numModes;
+    mode = (mode+1)%numModes;
   }
   last_interrupt_time = interrupt_time;
 }
 
-void incrementB()
+void decrementMode()
 {
   //Static variable initialized only first time increment called, persists between calls.
   static unsigned long last_interrupt_time = 0;
@@ -138,7 +190,7 @@ void incrementB()
   // If interrupts come faster than 200ms, assume it's a bounce and ignore
   if (interrupt_time - last_interrupt_time > 200) 
   {
-    modeB = (modeB+1)%numModes;
+    mode = (numModes-1+mode)%numModes;
   }
   last_interrupt_time = interrupt_time;
 }
