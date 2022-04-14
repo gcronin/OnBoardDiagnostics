@@ -13,10 +13,10 @@ char rxData[20];
 char rxIndex=0;
 
 // Setup the available OBD codes and associated names
-const int numModes = 6;
+const int numModes = 7;
 volatile int mode = 2; //start with RPM
-String PIDcodes[numModes] = {"0104", "0105", "010C", "010D", "010F", "0111"};
-String PIDnames[numModes] = {"Load %", "EngTemp", "RPM", "Speed", "AirTemp", "Throttle"};
+String PIDcodes[numModes] = {"0104", "0105", "010C", "010D", "010F", "0111", "atrv"};
+String PIDnames[numModes] = {"Load %", "EngTemp oC", "RPM", "Speed km/hr", "AirTemp oC", "Throttle %", "Battery"};
 char expResponse[5];
 
 void setup() {
@@ -34,17 +34,19 @@ void loop() {
   //request data from OBD
   OBD.println(PIDcodes[mode]);  
 
-  //first response repeats sent data
+  //first response repeats sent data for OBD commands (not 'at' commands)
   //second response is what we want
-  getResponse();
+  if(mode!=6) getResponse();
   getResponse();
 
   //setup expected response code... same as PID with '4' at beginning
   PIDcodes[mode].toCharArray(expResponse, 5);
   expResponse[0] = '4';
 
-  // find expected response code in received response
-  int syncLocation = findSync();
+  // find expected response code in received response unless sending 'atrv' command
+  int syncLocation;
+  if(mode!=6) syncLocation = findSync();
+  else syncLocation = 0;
   
   // if we actually found the expected response
   if(syncLocation != -1) {
@@ -61,23 +63,28 @@ void loop() {
     //parse response for out data
     int data;
     switch(mode) {
-      case 0: // engine load, percent
+      case 0: // engine load, percent (max 100)
         data = strtol(&rxData[syncLocation],0,16)*100/255;
+        data = (abs(data) > 100) ? -1 : data;
         break;
-      case 1: // engine temp, oC
+      case 1: // engine temp, oC (max 500)
         data = strtol(&rxData[syncLocation],0,16)-40;
+        data = (abs(data) > 500) ? -1 : data;
         break;
       case 2: // RPM
         data = strtol(&rxData[syncLocation],0,16)/4;
         break;
-      case 3: // speed km/hr
+      case 3: // speed km/hr (max 300)
         data = strtol(&rxData[syncLocation],0,16);
+        data = (abs(data) > 300) ? -1 : data;
         break;
       case 4: // air temp, oC
         data = strtol(&rxData[syncLocation],0,16)-40;
+        data = (abs(data) > 500) ? -1 : data;
         break;
-      case 5: // throttle, percent
+      case 5: // throttle, percent (max 100)
         data = strtol(&rxData[syncLocation],0,16)*100/255;
+        data = (abs(data) > 100) ? -1 : data;
         break;
       default:
         data = -1;
