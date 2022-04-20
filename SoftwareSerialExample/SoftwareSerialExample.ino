@@ -1,12 +1,12 @@
 #include <SoftwareSerial.h>
 #include <LiquidCrystal.h>
 
-const int rs = 7, en = 6, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
+const int rs = 7, en = 6, d4 = 5, d5 = 4, d6 = A1, d7 = A0;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 SoftwareSerial OBD(8, 9); // RX, TX
 
-const boolean useSerial = true;
-const boolean useLCD = false;
+const boolean useSerial = false;
+const boolean useLCD = true;
 
 //This is a character buffer that will store the data from the serial port
 char rxData[20];
@@ -14,7 +14,7 @@ char rxIndex=0;
 
 // Setup the available OBD codes and associated names
 const int numModes = 7;
-volatile int mode = 2; //start with RPM
+volatile int mode = 2; //starting mode
 String PIDcodes[numModes] = {"0104", "0105", "010C", "010D", "010F", "0111", "atrv"};
 String PIDnames[numModes] = {"Load %", "EngTemp oC", "RPM", "Speed km/hr", "AirTemp oC", "Throttle %", "Battery"};
 char expResponse[5];
@@ -22,8 +22,8 @@ char expResponse[5];
 void setup() {
   pinMode(2, INPUT_PULLUP);
   pinMode(3, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(2), incrementMode, LOW);
-  attachInterrupt(digitalPinToInterrupt(3), decrementMode, LOW);
+  attachInterrupt(digitalPinToInterrupt(3), incrementMode, LOW);
+  attachInterrupt(digitalPinToInterrupt(2), decrementMode, LOW);
   OBD.begin(9600);
   
   if(useSerial) Serial.begin(9600);
@@ -86,6 +86,14 @@ void loop() {
         data = strtol(&rxData[syncLocation],0,16)*100/255;
         data = (abs(data) > 100) ? -1 : data;
         break;
+//      case 7: // number codes
+//        String numCodes = rxData;
+//        numCodes = numCodes.substring(syncLocation, syncLocation+2);
+//        Serial.print("  ");
+//        Serial.print(numCodes);
+//        Serial.print("  ");
+//        data = strtol(&numCodes[0],0,16) - 128;
+//        Serial.print(data);
       default:
         data = -1;
         break;        
