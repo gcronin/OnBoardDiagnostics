@@ -5,18 +5,18 @@ const int rs = 7, en = 6, d4 = 5, d5 = 4, d6 = A1, d7 = A0;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 SoftwareSerial OBD(8, 9); // RX, TX
 
-const boolean useSerial = false;
-const boolean useLCD = true;
+const boolean useSerial = true;
+const boolean useLCD = false;
 
 //This is a character buffer that will store the data from the serial port
 char rxData[20];
 char rxIndex=0;
 
 // Setup the available OBD codes and associated names
-const int numModes = 7;
-volatile int mode = 2; //starting mode
-String PIDcodes[numModes] = {"0104", "0105", "010C", "010D", "010F", "0111", "atrv"};
-String PIDnames[numModes] = {"Load %", "EngTemp oC", "RPM", "Speed km/hr", "AirTemp oC", "Throttle %", "Battery"};
+const int numModes = 8;
+volatile int mode = 6; //starting mode
+String PIDcodes[numModes] = {"0104", "0105", "010C", "010D", "010F", "0111", "atrv", "0101"};
+String PIDnames[numModes] = {"Load %     ", "EngTemp oC ", "RPM        ", "Speed km/hr", "AirTemp oC ", "Throttle % ", "Battery V  ", "Numbr Codes"};
 char expResponse[5];
 
 void setup() {
@@ -31,27 +31,33 @@ void setup() {
 }
 
 void loop() { 
-  //request data from OBD
-  OBD.println(PIDcodes[mode]);  
-
-  //first response repeats sent data for OBD commands (not 'at' commands)
-  //second response is what we want
-  if(mode!=6) getResponse();
-  getResponse();
-
-  //setup expected response code... same as PID with '4' at beginning
-  PIDcodes[mode].toCharArray(expResponse, 5);
-  expResponse[0] = '4';
-
-  // find expected response code in received response unless sending 'atrv' command
-  int syncLocation;
-  if(mode!=6) syncLocation = findSync();
-  else syncLocation = 0;
+  OBD.flush();
+  //emptyRXBuffer();  PROBLEMATIC... SEEMS TO CAUSE FREEZING WITH INTERRUPTS...
   
+  //request data from OBD
+  OBD.println(PIDcodes[mode]);
+  delay(100);  
+
+  //first response repeats sent data for OBD commands
+  //second response is what we want
+  int syncLocation;
+  if(mode!=6) {
+    getResponse();
+    getResponse();
+
+    //setup expected response code... same as PID with '4' at beginning
+    PIDcodes[mode].toCharArray(expResponse, 5);
+    expResponse[0] = '4';
+  
+    // find expected response code in received response 
+    syncLocation = findSync();
+  }
+  else syncLocation = 0;
+
   // if we actually found the expected response
   if(syncLocation != -1) {
     // print full response and index of expected response
-    if(useSerial) {
+    if(useSerial && mode!=-6) {
       for(int i=0; i<20; i++)
       { 
         Serial.print(rxData[i]);
@@ -61,7 +67,7 @@ void loop() {
     }
 
     //parse response for out data
-    int data;
+    int data;  float Data;
     switch(mode) {
       case 0: // engine load, percent (max 100)
         data = strtol(&rxData[syncLocation],0,16)*100/255;
@@ -86,14 +92,16 @@ void loop() {
         data = strtol(&rxData[syncLocation],0,16)*100/255;
         data = (abs(data) > 100) ? -1 : data;
         break;
-//      case 7: // number codes
-//        String numCodes = rxData;
-//        numCodes = numCodes.substring(syncLocation, syncLocation+2);
-//        Serial.print("  ");
-//        Serial.print(numCodes);
-//        Serial.print("  ");
-//        data = strtol(&numCodes[0],0,16) - 128;
-//        Serial.print(data);
+      case 6: // battery voltage  (8<V<20)
+        Data = readBattery();
+        data = (Data > 8 && Data < 20) ? 1 : -1;
+        break; 
+      case 7: // number codes (max 10)
+        String numCodes = rxData;
+        numCodes = numCodes.substring(syncLocation, syncLocation+2);
+        data = strtol(&numCodes[0],0,16) - 128;
+        data = (abs(data) > 10) ? -1 : data;
+        break;
       default:
         data = -1;
         break;        
@@ -104,7 +112,8 @@ void loop() {
         Serial.print("  ");
         Serial.print(PIDnames[mode]);
         Serial.print("  ");
-        Serial.println(data);
+        if(mode == 6) Serial.println(Data);
+        else Serial.println(data);
       }
 
       if(useLCD) {
@@ -113,12 +122,13 @@ void loop() {
         lcd.setCursor(0, 1);
         lcd.print("           ");
         lcd.setCursor(0, 1);
-        lcd.print(data);
+        if(mode == 6) lcd.print(Data);
+        else lcd.print(data);
       }
     }
     else if(useSerial) Serial.println("");
   }
-  delay(200);
+  delay(500);
 }
 
 //The getResponse function collects incoming data from the UART into the rxData buffer
@@ -208,4 +218,28 @@ void decrementMode()
     mode = (numModes-1+mode)%numModes;
   }
   last_interrupt_time = interrupt_time;
+}
+
+void emptyRXBuffer() {
+  while(OBD.available()>0 ) {
+    OBD.read();
+  }
+}
+
+float readBattery() {
+  boolean receivedString = false;
+  String Data = "";
+  while(!receivedString) {
+    if(OBD.available()) {
+      char character = OBD.read();    
+      if(character == 'V') { 
+          receivedString = true; 
+
+      }
+      else { Data.concat(character); }
+    }
+  }
+  if(useSerial) Serial.print(Data);
+  Data=Data.substring(5);
+  return Data.toFloat();
 }
