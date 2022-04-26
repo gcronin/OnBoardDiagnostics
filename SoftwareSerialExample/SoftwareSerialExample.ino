@@ -5,8 +5,8 @@ const int rs = 7, en = 6, d4 = 5, d5 = 4, d6 = A1, d7 = A0;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 SoftwareSerial OBD(8, 9); // RX, TX
 
-const boolean useSerial = true;
-const boolean useLCD = false;
+const boolean useSerial = false;
+const boolean useLCD = true;
 
 //This is a character buffer that will store the data from the serial port
 char rxData[20];
@@ -14,10 +14,10 @@ char rxIndex=0;
 
 // Setup the available OBD codes and associated names
 const int numModes = 9;
-volatile int mode = 0; //starting mode
+volatile int mode = 8; //starting mode
 volatile boolean modeChanged = false;
-String PIDcodes[numModes] = {"0104", "0105", "010C", "010D", "010F", "0111", "atrv", "0101"};
-String PIDnames[numModes] = {"Load %     ", "EngTemp oC ", "RPM        ", "Speed km/hr", "AirTemp oC ", "Throttle % ", "Battery V  ", "Numbr Codes"};
+String PIDcodes[numModes] = {"0104", "0105", "010C", "010D", "010F", "0111", "atrv", "0101", "03"};
+String PIDnames[numModes] = {"Load %     ", "EngTemp oC ", "RPM        ", "Speed km/hr", "AirTemp oC ", "Throttle % ", "Battery V  ", "Numbr Codes", "Codes:     "};
 char expResponse[5];
 
 void setup() {
@@ -29,6 +29,7 @@ void setup() {
   
   if(useSerial) Serial.begin(9600);
   if(useLCD) lcd.begin(16, 2);
+
 }
 
 void loop() { 
@@ -47,10 +48,11 @@ void loop() {
   PIDcodes[mode].toCharArray(expResponse, 5);
   if(mode!=6) { expResponse[0] = '4'; }
 
-  // find expected response code in received response 
+  // find expected response code in received response...compare 4 digits for all modes except PID 03 (mode 8) = 2 digits 
   int syncLocation;
-  syncLocation = findSync();
-  
+  if(mode!=8) syncLocation = findSync(4);
+  else syncLocation = findSync(2);
+    
   // if we actually found the expected response
   if(syncLocation != -1) {
     // print full response and index of expected response
@@ -98,9 +100,11 @@ void loop() {
       case 7: // number codes (max 10)
         String numCodes = rxData;
         numCodes = numCodes.substring(syncLocation, syncLocation+2);
-        Serial.print(numCodes);
         data = strtol(&numCodes[0],0,16) - 128;
         data = (abs(data) > 10) ? -1 : data;
+        break;
+      case 8: // actual codes
+        data = 0;
         break;
       default:
         data = -1;
@@ -114,6 +118,12 @@ void loop() {
         Serial.print(PIDnames[mode]);
         Serial.print("  ");
         if(mode == 6) Serial.println(voltage);
+        if(mode == 8) {
+          for(int i=syncLocation; i<syncLocation+4; i++) {
+            Serial.print(rxData[i]);
+          }
+          Serial.println("");
+        }
         else Serial.println(data);
       }
 
@@ -121,9 +131,10 @@ void loop() {
         lcd.setCursor(0, 0);
         lcd.print(PIDnames[mode]);
         lcd.setCursor(0, 1);
-        lcd.print("           ");
+        lcd.print("               ");
         lcd.setCursor(0, 1);
         if(mode == 6) lcd.print(voltage);
+        if(mode == 8) lcd.print(&rxData[syncLocation]);
         else lcd.print(data);
       }
     }
@@ -142,7 +153,6 @@ void getResponse(){
   if(mode == 6) { endCharacter = 'V'; } // in battery voltage mode, look for V
   //Keep reading characters until we get the end character
   while(inChar != endCharacter){
-    //Serial.println("In loop");
     // break out of while loop if interrupt triggered
     if(modeChanged) {
       rxIndex = 0;
@@ -183,22 +193,22 @@ void getResponse(){
 
 //Look for the expected response in an array of characters.  Return the
 //array index just after the expected response or -1 if not found.
-int findSync(void) {
+int findSync(int responseLength) {
   int location = 0;
   int k=0;
   char test[5]; 
-  for(int i=0; i<16; i++) {
-    for(int j=0; j<4; j++) {
+  for(int i=0; i<(20-responseLength); i++) {
+    for(int j=0; j<responseLength; j++) {
       test[j] = rxData[i+j];
     }
     k=0;
-    for(int j=0; j<4; j++) {
+    for(int j=0; j<responseLength; j++) {
       if ( test[j] == expResponse[j] )
       {
         k=k+1;
       }
     }
-    if(k == 4) return (location+4);
+    if(k == responseLength) return (location+responseLength);
     location++;
   }
   return -1;
