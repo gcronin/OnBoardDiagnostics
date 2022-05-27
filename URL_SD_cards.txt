@@ -1,0 +1,1 @@
+https://arduino.stackexchange.com/questions/21364/microsd-interfering-with-isp-programming

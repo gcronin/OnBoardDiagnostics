@@ -1,6 +1,11 @@
 #include <SoftwareSerial.h>
 #include <LiquidCrystal.h>
 
+/* ** MOSI - pin 11  YELLOW Pin 17
+   ** MISO - pin 12  BLUE  Pin 18
+   ** CLK - pin 13  GREEN  Pin 19
+   ** CS - pin 10  GREY Pin 16 */
+
 const int rs = 7, en = 6, d4 = 5, d5 = 4, d6 = A1, d7 = A0;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 SoftwareSerial OBD(8, 9); // RX, TX
@@ -26,10 +31,23 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(3), incrementMode, LOW);
   attachInterrupt(digitalPinToInterrupt(2), decrementMode, LOW);
   OBD.begin(9600);
-  
+
   if(useSerial) Serial.begin(9600);
   if(useLCD) lcd.begin(16, 2);
 
+  //reset OBD
+  if(useLCD) lcd.setCursor(0, 0);
+  if(useLCD) lcd.print("Resetting");
+  delay(2000);
+  OBD.println("atz");
+  char endCharacter = '>';
+  char inChar=0;
+  while(inChar != endCharacter){
+    if(OBD.available() > 0){
+      inChar=OBD.read();
+      if(useSerial) Serial.print(inChar);
+    }
+  }
 }
 
 void loop() { 
