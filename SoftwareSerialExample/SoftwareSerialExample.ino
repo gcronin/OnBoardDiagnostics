@@ -1,5 +1,7 @@
 #include <SoftwareSerial.h>
 #include <LiquidCrystal.h>
+#include <SPI.h>
+#include <SD.h>
 
 /* ** MOSI - pin 11  YELLOW Pin 17
    ** MISO - pin 12  BLUE  Pin 18
@@ -25,11 +27,15 @@ String PIDcodes[numModes] = {"0104", "0105", "010C", "010D", "010F", "0111", "at
 String PIDnames[numModes] = {"Load %     ", "EngTemp oC ", "RPM        ", "Speed km/hr", "AirTemp oC ", "Throttle % ", "Battery V  ", "Numbr Codes", "Codes:     "};
 char expResponse[5];
 
+File SDfile;
+volatile boolean logToSD = false;
+boolean SDinitialized = false;
+
 void setup() {
   pinMode(2, INPUT_PULLUP);
   pinMode(3, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(3), incrementMode, LOW);
-  attachInterrupt(digitalPinToInterrupt(2), decrementMode, LOW);
+  attachInterrupt(digitalPinToInterrupt(2), toggleSDMode, LOW);
   OBD.begin(9600);
 
   if(useSerial) Serial.begin(9600);
@@ -155,10 +161,31 @@ void loop() {
         if(mode == 8) lcd.print(&rxData[syncLocation]);
         else lcd.print(data);
       }
+
+      lcd.setCursor(15, 1);
+      lcd.print(" ");
+      if(logToSD) {
+        if(!SDinitialized) { 
+          if(SD.begin(10)) SDinitialized = true;
+        }
+        SDfile = SD.open("log.txt", FILE_WRITE);
+        if(SDfile) {
+          SDfile.print(millis());
+          SDfile.print(", ");
+          if(mode == 6) SDfile.println(voltage);
+          if(mode == 8) SDfile.println(&rxData[syncLocation]);
+          else SDfile.println(data);
+          SDfile.close();
+          if(useLCD) {
+            lcd.setCursor(15, 1);
+            lcd.write(255); //print a block if successfully writing
+          }
+        }
+      }
     }
     else if(useSerial) Serial.println("");
   }
-  delay(500);
+  delay(300);
 }
 
 // The getResponse function collects incoming data from the UART into the rxData buffer
@@ -246,7 +273,7 @@ void incrementMode()
   last_interrupt_time = interrupt_time;
 }
 
-void decrementMode()
+void toggleSDMode()
 {
   //Static variable initialized only first time increment called, persists between calls.
   static unsigned long last_interrupt_time = 0;
@@ -254,7 +281,7 @@ void decrementMode()
   // If interrupts come faster than 200ms, assume it's a bounce and ignore
   if (interrupt_time - last_interrupt_time > 200) 
   {
-    mode = (numModes-1+mode)%numModes;
+    logToSD = !logToSD;
     modeChanged = true;
   }
   last_interrupt_time = interrupt_time;
