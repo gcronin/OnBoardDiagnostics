@@ -23,12 +23,14 @@ int syncLocation;
 
 // Setup the available OBD codes and associated names
 const int numModes = 8;
-volatile int mode = 2; //starting mode
-volatile int mode2 = 3;
+volatile int mode1 = 2; //Top LCD Line Display
+volatile int mode2 = 3; //Bottom LCD Line Display
+int mode;
 volatile boolean modeChanged = false;
 String PIDcodes[numModes] = {"0104", "0105", "010C", "010D", "010F", "0111", "atrv", "03"};
-String PIDnames[numModes] = {"Load%", "EngoC", "RPMs ", "km/hr", "AiroC", "Thrt%", "BattV", "Codes"};
+String PIDnames[numModes] = {"Load%", "Eng C", "RPMs ", "km/hr", "Air C", "Thrt%", "BattV", "Codes"};
 char expResponse[5];
+boolean evenLoop = true;
 
 //SD card variables
 File SDfile;
@@ -38,7 +40,7 @@ boolean SDinitialized = false;
 void setup() {
   pinMode(2, INPUT_PULLUP);
   pinMode(3, INPUT_PULLUP);
-  //attachInterrupt(digitalPinToInterrupt(3), incrementMode, LOW);
+  //attachInterrupt(digitalPinToInterrupt(3), incrementMode1, LOW);
   attachInterrupt(digitalPinToInterrupt(2), toggleSDMode, LOW);
   OBD.begin(9600);
   if(useSerial) Serial.begin(9600);
@@ -49,6 +51,7 @@ void setup() {
 void loop() { 
   OBD.flush();
   emptyRXBuffer();
+  mode = evenLoop ? mode1 : mode2; 
   getRawData(mode);
   if(syncLocation != -1) {
     printRawData();
@@ -60,6 +63,7 @@ void loop() {
     else if(useSerial) Serial.println("");
   }
   delay(300);
+  evenLoop = !evenLoop;
 }
 
 /*!
@@ -77,7 +81,7 @@ void printRawData() {
 }
 
 /*!
-  @brief   
+  @brief   Send OBD query, get response, validate by looking for echo of query
 */
 void getRawData(int _mode) {
   //request data from OBD
@@ -162,9 +166,11 @@ void logSD(int _mode) {
     if(SDfile) {
       SDfile.print(millis());
       SDfile.print(", ");
-      if(mode == 6) SDfile.println(voltage);
-      if(mode == 8) SDfile.println(&rxData[syncLocation]);
+      if(evenLoop) SDfile.print(", ");
+      if(_mode == 6) SDfile.println(voltage);
+      else if(_mode == 8) SDfile.println(&rxData[syncLocation]);
       else SDfile.println(data);
+      if(!evenLoop) SDfile.print(", ");
       SDfile.close();
       if(useLCD) {
         lcd.setCursor(15, 1);
@@ -285,7 +291,7 @@ int findSync(int responseLength) {
   @brief   increment mode
   @note    interrupt service routine
 */
-void incrementMode()
+void incrementMode1()
 {
   //Static variable initialized only first time increment called, persists between calls.
   static unsigned long last_interrupt_time = 0;
@@ -293,7 +299,7 @@ void incrementMode()
   // If interrupts come faster than 200ms, assume it's a bounce and ignore
   if (interrupt_time - last_interrupt_time > 200) 
   {
-    mode = (mode+1)%numModes;
+    mode1 = (mode1+1)%numModes;
     modeChanged = true;
   }
   last_interrupt_time = interrupt_time;
