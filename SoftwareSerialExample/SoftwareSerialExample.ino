@@ -57,7 +57,7 @@ void loop() {
     printRawData();
     parseData(mode);
     if(data != -1) {
-      printParsedData(mode);
+      printParsedData(mode, evenLoop);
       logSD(mode);
     }
     else if(useSerial) Serial.println("");
@@ -183,7 +183,7 @@ void logSD(int _mode) {
 /*!
   @brief   print to LCD and/or serial depending on global variables
 */
-void printParsedData(int _mode) {
+void printParsedData(int _mode, int LCDlineNum) {
   if(useSerial) {
         Serial.print("  ");
         Serial.print(PIDnames[_mode]);
@@ -199,11 +199,11 @@ void printParsedData(int _mode) {
       }
 
       if(useLCD) {
-        lcd.setCursor(0, 0);
+        lcd.setCursor(0, LCDlineNum);
         lcd.print(PIDnames[_mode]);
-        lcd.setCursor(0, 1);
-        lcd.print("               ");
-        lcd.setCursor(0, 1);
+        lcd.setCursor(6, LCDlineNum);
+        lcd.print("          ");
+        lcd.setCursor(6, LCDlineNum);
         if(_mode == 6) lcd.print(voltage);
         if(_mode == 8) lcd.print(&rxData[syncLocation]);
         else lcd.print(data);
