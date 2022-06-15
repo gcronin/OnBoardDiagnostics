@@ -23,11 +23,11 @@ int syncLocation;
 
 // Setup the available OBD codes and associated names
 const int numModes = 8;
-volatile int mode1 = 2; //Top LCD Line Display
-volatile int mode2 = 3; //Bottom LCD Line Display
+volatile int modeTopLine = 2; //Top LCD Line Display
+volatile int modeBottomLine = 3; //Bottom LCD Line Display
 int mode;
 volatile boolean modeChanged = false;
-String PIDcodes[numModes] = {"0104", "0105", "010C", "010D", "010F", "0111", "atrv", "03"};
+String PIDcodes[numModes] = {"0104", "0105", "010C", "010D", "010F", "0111", "atrv", "03"}; // last entry needs to be read codes
 String PIDnames[numModes] = {"Load%", "Eng C", "RPMs ", "km/hr", "Air C", "Thrt%", "BattV", "Codes"};
 char expResponse[5];
 boolean evenLoop = true;
@@ -40,18 +40,19 @@ boolean SDinitialized = false;
 void setup() {
   pinMode(2, INPUT_PULLUP);
   pinMode(3, INPUT_PULLUP);
-  //attachInterrupt(digitalPinToInterrupt(3), incrementMode1, LOW);
-  attachInterrupt(digitalPinToInterrupt(2), toggleSDMode, LOW);
+  attachInterrupt(digitalPinToInterrupt(3), incrementModeTop, LOW);
+  attachInterrupt(digitalPinToInterrupt(2), incrementModeBottom, LOW);
   OBD.begin(9600);
   if(useSerial) Serial.begin(9600);
   if(useLCD) lcd.begin(16, 2);
   resetODB();
+  displayCodes();
 }
 
 void loop() { 
   OBD.flush();
   emptyRXBuffer();
-  mode = evenLoop ? mode1 : mode2; 
+  mode = evenLoop ? modeTopLine : modeBottomLine; 
   getRawData(mode);
   if(syncLocation != -1) {
     printRawData();
@@ -64,6 +65,25 @@ void loop() {
   }
   delay(300);
   evenLoop = !evenLoop;
+}
+
+/*!
+  @brief   read Error Codes, display
+*/
+void displayCodes() {
+  OBD.flush();
+  emptyRXBuffer();
+  getRawData(numModes);
+  if(syncLocation != -1) {
+    printRawData();
+    if(useLCD) {
+        lcd.setCursor(0, 0);
+        lcd.print("Codes");
+        lcd.setCursor(0, 1);
+        lcd.print(&rxData[syncLocation]);
+    }
+    delay(5000);
+  }
 }
 
 /*!
@@ -288,10 +308,10 @@ int findSync(int responseLength) {
 }
 
 /*!
-  @brief   increment mode
+  @brief   increment PID to be displayed on top line of LCD
   @note    interrupt service routine
 */
-void incrementMode1()
+void incrementModeTop()
 {
   //Static variable initialized only first time increment called, persists between calls.
   static unsigned long last_interrupt_time = 0;
@@ -299,7 +319,25 @@ void incrementMode1()
   // If interrupts come faster than 200ms, assume it's a bounce and ignore
   if (interrupt_time - last_interrupt_time > 200) 
   {
-    mode1 = (mode1+1)%numModes;
+    modeTopLine = (modeTopLine+1)%(numModes-1);
+    modeChanged = true;
+  }
+  last_interrupt_time = interrupt_time;
+}
+
+/*!
+  @brief   increment PID to be displayed on bottom line of LCD
+  @note    interrupt service routine
+*/
+void incrementModeBottom()
+{
+  //Static variable initialized only first time increment called, persists between calls.
+  static unsigned long last_interrupt_time = 0;
+  unsigned long interrupt_time = millis();
+  // If interrupts come faster than 200ms, assume it's a bounce and ignore
+  if (interrupt_time - last_interrupt_time > 200) 
+  {
+    modeBottomLine = (modeBottomLine+1)%(numModes-1);
     modeChanged = true;
   }
   last_interrupt_time = interrupt_time;
