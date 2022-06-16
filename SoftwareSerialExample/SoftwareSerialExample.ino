@@ -40,6 +40,8 @@ boolean SDinitialized = false;
 void setup() {
   pinMode(2, INPUT_PULLUP);
   pinMode(3, INPUT_PULLUP);
+  pinMode(A2, INPUT_PULLUP);
+  pinMode(A3, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(3), incrementModeTop, LOW);
   attachInterrupt(digitalPinToInterrupt(2), incrementModeBottom, LOW);
   OBD.begin(9600);
@@ -65,6 +67,14 @@ void loop() {
   }
   delay(300);
   evenLoop = !evenLoop;
+  readButtons();
+}
+
+void readButtons() {
+  if(!digitalRead(A2)) {
+    logToSD = !logToSD;
+    //delay(1000); //debounce
+  }
 }
 
 /*!
