@@ -42,13 +42,13 @@ void setup() {
   pinMode(3, INPUT_PULLUP);
   pinMode(A2, INPUT_PULLUP);
   pinMode(A3, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(3), incrementModeTop, LOW);
-  attachInterrupt(digitalPinToInterrupt(2), incrementModeBottom, LOW);
+  attachInterrupt(digitalPinToInterrupt(2), incrementModeTop, LOW);
+  attachInterrupt(digitalPinToInterrupt(3), incrementModeBottom, LOW);
   OBD.begin(9600);
   if(useSerial) Serial.begin(9600);
   if(useLCD) lcd.begin(16, 2);
   resetODB();
-  displayCodes();
+  //displayCodes();
 }
 
 void loop() { 
@@ -65,15 +65,15 @@ void loop() {
     }
     else if(useSerial) Serial.println("");
   }
+  readButtons();
   delay(300);
   evenLoop = !evenLoop;
-  readButtons();
 }
 
 void readButtons() {
   if(!digitalRead(A2)) {
     logToSD = !logToSD;
-    //delay(1000); //debounce
+    delay(500);
   }
 }
 
@@ -83,7 +83,7 @@ void readButtons() {
 void displayCodes() {
   OBD.flush();
   emptyRXBuffer();
-  getRawData(numModes);
+  getRawData(7);
   if(syncLocation != -1) {
     printRawData();
     if(useLCD) {
@@ -126,9 +126,9 @@ void getRawData(int _mode) {
   PIDcodes[_mode].toCharArray(expResponse, 5);
   if(_mode!=6) { expResponse[0] = '4'; }
 
-  // find expected response code in received response...compare 4 digits for all modes except PID 03 (mode 8) = 2 digits 
+  // find expected response code in received response...compare 4 digits for all modes except PID 03 (mode 7) = 2 digits 
 
-  if(_mode!=8) syncLocation = findSync(4);
+  if(_mode!=7) syncLocation = findSync(4);
   else syncLocation = findSync(2);
 }
 
@@ -166,15 +166,9 @@ void parseData(int _mode) {
       voltage = battResponse.toFloat();
       data = (voltage > 8 && voltage < 20) ? 1 : -1;
       break; 
-    case 7: // number codes (max 10)
-      String numCodes = rxData;
-      numCodes = numCodes.substring(syncLocation, syncLocation+2);
-      data = strtol(&numCodes[0],0,16) - 128;
-      data = (abs(data) > 10) ? -1 : data;
-      break;
-    case 8: // actual codes
+    case 7: // actual codes
       data = 0;
-      break;
+      break;      
     default:
       data = -1;
       break;        
@@ -197,10 +191,11 @@ void logSD(int _mode) {
       SDfile.print(millis());
       SDfile.print(", ");
       if(evenLoop) SDfile.print(", ");
-      if(_mode == 6) SDfile.println(voltage);
-      else if(_mode == 8) SDfile.println(&rxData[syncLocation]);
-      else SDfile.println(data);
-      if(!evenLoop) SDfile.print(", ");
+      if(_mode == 6) SDfile.print(voltage);
+      else if(_mode == 7) SDfile.print(&rxData[syncLocation]);
+      else SDfile.print(data);
+      if(!evenLoop) SDfile.println(", ");
+      else SDfile.println("");
       SDfile.close();
       if(useLCD) {
         lcd.setCursor(15, 1);
@@ -219,7 +214,7 @@ void printParsedData(int _mode, int LCDlineNum) {
         Serial.print(PIDnames[_mode]);
         Serial.print("  ");
         if(mode == 6) Serial.println(voltage);
-        if(mode == 8) {
+        if(mode == 7) {
           for(int i=syncLocation; i<syncLocation+4; i++) {
             Serial.print(rxData[i]);
           }
@@ -235,7 +230,7 @@ void printParsedData(int _mode, int LCDlineNum) {
         lcd.print("          ");
         lcd.setCursor(6, LCDlineNum);
         if(_mode == 6) lcd.print(voltage);
-        if(_mode == 8) lcd.print(&rxData[syncLocation]);
+        if(_mode == 7) lcd.print(&rxData[syncLocation]);
         else lcd.print(data);
       }
 }
@@ -398,4 +393,6 @@ void resetODB() {
       if(useSerial) Serial.print(inChar);
     }
   }
+  if(useLCD) lcd.setCursor(0, 0);
+  if(useLCD) lcd.print("         ");
 }
