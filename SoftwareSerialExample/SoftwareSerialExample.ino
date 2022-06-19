@@ -27,7 +27,7 @@ volatile int modeTopLine = 2; //Top LCD Line Display
 volatile int modeBottomLine = 3; //Bottom LCD Line Display
 int mode;
 volatile boolean modeChanged = false;
-String PIDcodes[numModes] = {"0104", "0105", "010C", "010D", "010F", "0111", "atrv", "03"}; // last entry needs to be read codes
+String PIDcodes[numModes] = {"0104", "0105", "010C", "010D", "010F", "0111", "atrv", "03"};
 String PIDnames[numModes] = {"Load%", "Eng C", "RPMs ", "km/hr", "Air C", "Thrt%", "BattV", "Codes"};
 char expResponse[5];
 boolean evenLoop = true;
@@ -72,8 +72,16 @@ void loop() {
 
 void readButtons() {
   if(!digitalRead(A2)) {
+    if(useLCD) {
+        lcd.setCursor(15, 1);
+        lcd.print("-"); //feedback for button press
+    }
     logToSD = !logToSD;
     delay(500);
+    if(useLCD) {
+        lcd.setCursor(15, 1);
+        lcd.print(" ");
+    }
   }
 }
 
@@ -127,7 +135,6 @@ void getRawData(int _mode) {
   if(_mode!=6) { expResponse[0] = '4'; }
 
   // find expected response code in received response...compare 4 digits for all modes except PID 03 (mode 7) = 2 digits 
-
   if(_mode!=7) syncLocation = findSync(4);
   else syncLocation = findSync(2);
 }
@@ -349,25 +356,6 @@ void incrementModeBottom()
 }
 
 /*!
-  @brief   toggle whether data is being logged to SD card
-  @note    interrupt routine
-*/
-void toggleSDMode()
-{
-  //Static variable initialized only first time increment called, persists between calls.
-  static unsigned long last_interrupt_time = 0;
-  unsigned long interrupt_time = millis();
-  // If interrupts come faster than 200ms, assume it's a bounce and ignore
-  if (interrupt_time - last_interrupt_time > 200) 
-  {
-    logToSD = !logToSD;
-    modeChanged = true;
-  }
-  last_interrupt_time = interrupt_time;
-}
-
-
-/*!
   @brief   clear Software Serial buffer
 */
 void emptyRXBuffer() {
@@ -393,6 +381,7 @@ void resetODB() {
       if(useSerial) Serial.print(inChar);
     }
   }
+  if(useSerial) Serial.println("");
   if(useLCD) lcd.setCursor(0, 0);
   if(useLCD) lcd.print("         ");
 }
