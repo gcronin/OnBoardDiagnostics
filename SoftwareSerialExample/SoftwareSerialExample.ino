@@ -16,7 +16,8 @@ const boolean useSerial = false;
 const boolean useLCD = true;
 
 // Variables for reading raw and processed data from Software Serial
-char rxData[20];
+const uint8_t rxBufferLength = 20;
+char rxData[rxBufferLength];
 char rxIndex=0;
 int data;  float voltage;
 int syncLocation = -1;
@@ -29,6 +30,8 @@ int mode;
 volatile boolean modeChanged = false;
 String PIDcodes[numModes] = {"0104", "0105", "010C", "010D", "010F", "0111", "atrv", "03"};
 String PIDnames[numModes] = {"Load%", "Eng C", "RPMs ", "km/hr", "Air C", "Thrt%", "BattV", "Codes"};
+const uint8_t battModeNum = 6;
+const uint8_t codesModeNum = 7;
 char expResponse[5];
 boolean evenLoop = true;
 
@@ -36,6 +39,7 @@ boolean evenLoop = true;
 File SDfile;
 volatile boolean logToSD = false;
 boolean SDinitialized = false;
+const uint8_t SDchipSelectPin = 10;
 
 void setup() {
   pinMode(2, INPUT_PULLUP);
@@ -94,20 +98,19 @@ void readButtons() {
 void displayCodes() {
   OBD.flush();
   emptyRXBuffer();
-  getRawData(7);
-      printRawData();
+  getRawData(codesModeNum);
+  printRawData();
   if(syncLocation != -1) {
-
     if(useLCD) {
         lcd.setCursor(0, 0);
         lcd.print("Codes");
         lcd.setCursor(0, 1);
         lcd.print(&rxData[syncLocation]);
     }
-    delay(5000);
+    delay(5000);  //pause so user can read codes
     if(useLCD) {
         lcd.setCursor(0, 1);
-        lcd.print("                ");
+        lcd.print("                ");  // clear codes from lower LCD line
     }
   }
 }
@@ -117,7 +120,7 @@ void displayCodes() {
 */
 void printRawData() {
   if(useSerial) {
-    for(int i=0; i<20; i++)
+    for(int i=0; i<rxBufferLength; i++)
     { 
       Serial.print(rxData[i]);
     }
@@ -135,15 +138,15 @@ void getRawData(int _mode) {
 
   //first response repeats sent data for OBD commands
   //second response is what we want.  For AT commands, only one response.
-  if(_mode!=6) {  getResponse();  }
+  if(_mode!=battModeNum) {  getResponse();  }
   getResponse();
 
   //setup expected response code... same as PID with '4' at beginning except AT commands... no change
   PIDcodes[_mode].toCharArray(expResponse, 5);
-  if(_mode!=6) { expResponse[0] = '4'; }
+  if(_mode!=battModeNum) { expResponse[0] = '4'; }
 
-  // find expected response code in received response...compare 4 digits for all modes except PID 03 (mode 7) = 2 digits 
-  if(_mode!=7) syncLocation = findSync(4);
+  // find expected response code in received response...compare 4 digits for all modes except PID 03  = 2 digits 
+  if(_mode!=codesModeNum) syncLocation = findSync(4);
   else syncLocation = findSync(2);
 }
 
@@ -175,13 +178,13 @@ void parseData(int _mode) {
       data = strtol(&rxData[syncLocation],0,16)*100/255;
       data = (abs(data) > 100) ? -1 : data;
       break;
-    case 6: // battery voltage  (8<V<20)
+    case battModeNum: // battery voltage  (8<V<20)
       String battResponse = rxData;
       battResponse = battResponse.substring(syncLocation);
       voltage = battResponse.toFloat();
       data = (voltage > 8 && voltage < 20) ? 1 : -1;
       break; 
-    case 7: // actual codes
+    case codesModeNum: // actual codes
       data = 0;
       break;      
     default:
@@ -199,15 +202,15 @@ void logSD(int _mode) {
   lcd.print(" ");
   if(logToSD) {
     if(!SDinitialized) { 
-      if(SD.begin(10)) SDinitialized = true;
+      if(SD.begin(SDchipSelectPin)) SDinitialized = true;
     }
     SDfile = SD.open("log.txt", FILE_WRITE);
     if(SDfile) {
       SDfile.print(millis());
       SDfile.print(", ");
       if(evenLoop) SDfile.print(", ");
-      if(_mode == 6) SDfile.print(voltage);
-      else if(_mode == 7) SDfile.print(&rxData[syncLocation]);
+      if(_mode == battModeNum) SDfile.print(voltage);
+      else if(_mode == codesModeNum) SDfile.print(&rxData[syncLocation]);
       else SDfile.print(data);
       if(!evenLoop) SDfile.println(", ");
       else SDfile.println("");
@@ -228,8 +231,8 @@ void printParsedData(int _mode, int LCDlineNum) {
         Serial.print("  ");
         Serial.print(PIDnames[_mode]);
         Serial.print("  ");
-        if(mode == 6) Serial.println(voltage);
-        if(mode == 7) {
+        if(mode == battModeNum) Serial.println(voltage);
+        if(mode == codesModeNum) {
           for(int i=syncLocation; i<syncLocation+4; i++) {
             Serial.print(rxData[i]);
           }
@@ -244,8 +247,8 @@ void printParsedData(int _mode, int LCDlineNum) {
         lcd.setCursor(6, LCDlineNum);
         lcd.print("          ");
         lcd.setCursor(6, LCDlineNum);
-        if(_mode == 6) lcd.print(voltage);
-        if(_mode == 7) lcd.print(&rxData[syncLocation]);
+        if(_mode == battModeNum) lcd.print(voltage);
+        if(_mode == codesModeNum) lcd.print(&rxData[syncLocation]);
         else lcd.print(data);
       }
 }
@@ -261,7 +264,7 @@ void printParsedData(int _mode, int LCDlineNum) {
 void getResponse(){
   char inChar=0;
   char endCharacter = '\r';  //end of message character ('\r').
-  if(mode == 6) { endCharacter = 'V'; } // in battery voltage mode, look for V
+  if(mode == battModeNum) { endCharacter = 'V'; } // in battery voltage mode, look for V
   //Keep reading characters until we get the end character
   while(inChar != endCharacter){
     // break out of while loop if interrupt triggered
@@ -271,7 +274,7 @@ void getResponse(){
       break;
     }
     // prevent buffer overflow
-    if(rxIndex > 19) {
+    if(rxIndex > (rxBufferLength-1)) {
       rxIndex = 0;
       break;
     }
@@ -310,7 +313,7 @@ int findSync(int responseLength) {
   int location = 0;
   int k=0;
   char test[5]; 
-  for(int i=0; i<(20-responseLength); i++) {
+  for(int i=0; i<(rxBufferLength-responseLength); i++) {
     for(int j=0; j<responseLength; j++) {
       test[j] = rxData[i+j];
     }
