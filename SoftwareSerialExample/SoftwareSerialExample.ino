@@ -19,7 +19,7 @@ const boolean useLCD = true;
 char rxData[20];
 char rxIndex=0;
 int data;  float voltage;
-int syncLocation;
+int syncLocation = -1;
 
 // Setup the available OBD codes and associated names
 const int numModes = 8;
@@ -48,7 +48,10 @@ void setup() {
   if(useSerial) Serial.begin(9600);
   if(useLCD) lcd.begin(16, 2);
   resetODB();
-  //displayCodes();
+  while(syncLocation == -1) {
+    displayCodes();
+    delay(500);
+  }
 }
 
 void loop() { 
@@ -92,8 +95,9 @@ void displayCodes() {
   OBD.flush();
   emptyRXBuffer();
   getRawData(7);
+      printRawData();
   if(syncLocation != -1) {
-    printRawData();
+
     if(useLCD) {
         lcd.setCursor(0, 0);
         lcd.print("Codes");
@@ -101,6 +105,10 @@ void displayCodes() {
         lcd.print(&rxData[syncLocation]);
     }
     delay(5000);
+    if(useLCD) {
+        lcd.setCursor(0, 1);
+        lcd.print("                ");
+    }
   }
 }
 
