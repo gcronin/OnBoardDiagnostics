@@ -29,7 +29,7 @@ volatile int modeBottomLine = 3; //Bottom LCD Line Display
 int mode;
 volatile boolean modeChanged = false;
 String PIDcodes[numModes] = {"0104", "0105", "010C", "010D", "010F", "0111", "atrv", "03"};
-String PIDnames[numModes] = {"Load%", "Eng C", "RPMs ", "km/hr", "Air C", "Thrt%", "BattV", "Codes"};
+String PIDnames[numModes] = {"Load%", "Eng F", "RPMs ", "mph  ", "Air F", "Thrt%", "BattV", "Codes"};
 const uint8_t battModeNum = 6;
 const uint8_t codesModeNum = 7;
 char expResponse[5];
@@ -78,6 +78,7 @@ void loop() {
 }
 
 void readButtons() {
+  // log to SD
   if(!digitalRead(A2)) {
     if(useLCD) {
         lcd.setCursor(15, 1);
@@ -90,6 +91,35 @@ void readButtons() {
         lcd.print(" ");
     }
   }
+  // clear codes
+  if(!digitalRead(A3)) {
+    if(useLCD) {
+        lcd.setCursor(0, 0);
+        lcd.print("Erase Codes?");
+        lcd.setCursor(0, 1);
+        lcd.print("Y=Green N=Red");
+    }
+    delay(1000);  //debounce
+    while(true) {
+      if(!digitalRead(A3)) break;
+      else if(!digitalRead(A2)) {
+        resetCodes();
+        break;
+      }
+      delay(50);
+    }
+    delay(1000);  //debounce
+  }
+}
+
+void resetCodes() {
+  if(useLCD) lcd.setCursor(0, 0);
+  if(useLCD) lcd.print("Erasing Codes");
+  OBD.println("04");
+  getResponse();
+
+  if(useLCD) lcd.setCursor(0, 0);
+  if(useLCD) lcd.print("             ");
 }
 
 /*!
@@ -159,20 +189,20 @@ void parseData(int _mode) {
       data = strtol(&rxData[syncLocation],0,16)*100/255;
       data = (abs(data) > 100) ? -1 : data;
       break;
-    case 1: // engine temp, oC (max 500)
+    case 1: // engine temp, oF (max 500)
       data = strtol(&rxData[syncLocation],0,16)-40;
-      data = (abs(data) > 500) ? -1 : data;
+      data = (abs(data) > 500) ? -1 : celciusToFahrenheit(data);
       break;
     case 2: // RPM
       data = strtol(&rxData[syncLocation],0,16)/4;
       break;
-    case 3: // speed km/hr (max 300)
+    case 3: // speed mph (max 300 kph)
       data = strtol(&rxData[syncLocation],0,16);
-      data = (abs(data) > 300) ? -1 : data;
+      data = (abs(data) > 300) ? -1 : kphToMph(data);
       break;
-    case 4: // air temp, oC
+    case 4: // air temp, oF
       data = strtol(&rxData[syncLocation],0,16)-40;
-      data = (abs(data) > 500) ? -1 : data;
+      data = (abs(data) > 500) ? -1 : celciusToFahrenheit(data);
       break;
     case 5: // throttle, percent (max 100)
       data = strtol(&rxData[syncLocation],0,16)*100/255;
@@ -395,4 +425,16 @@ void resetODB() {
   if(useSerial) Serial.println("");
   if(useLCD) lcd.setCursor(0, 0);
   if(useLCD) lcd.print("         ");
+}
+
+int celciusToFahrenheit(int temp) {
+  float tempC = float(temp);
+  float tempF = (TempC*1.8)+32;
+  return int(tempF);
+}
+
+int kphToMph(int speed) {
+  float kph = float(speed);
+  float mph = (kph*0.62);
+  return int(mph);
 }
