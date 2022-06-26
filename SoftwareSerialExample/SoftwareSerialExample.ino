@@ -108,6 +108,12 @@ void readButtons() {
       }
       delay(50);
     }
+    if(useLCD) {
+      lcd.setCursor(0, 0);
+      lcd.print("            ");
+      lcd.setCursor(0, 1);
+      lcd.print("             ");
+    }
     delay(1000);  //debounce
   }
 }
@@ -115,10 +121,20 @@ void readButtons() {
 void resetCodes() {
   if(useLCD) lcd.setCursor(0, 0);
   if(useLCD) lcd.print("Erasing Codes");
+  OBD.flush();
+  emptyRXBuffer();
   OBD.println("04");
-  getResponse();
-
+  getResponse(); getResponse();
+  expResponse[0] = '4';  expResponse[1]='4';
+  syncLocation = findSync(2);
+  if(syncLocation != -1) {
+    if(useLCD) lcd.setCursor(0, 1);
+    if(useLCD) lcd.print("Success      ");
+  }
+  delay(2000);
   if(useLCD) lcd.setCursor(0, 0);
+  if(useLCD) lcd.print("             ");
+  if(useLCD) lcd.setCursor(0, 1);
   if(useLCD) lcd.print("             ");
 }
 
@@ -135,12 +151,48 @@ void displayCodes() {
         lcd.setCursor(0, 0);
         lcd.print("Codes");
         lcd.setCursor(0, 1);
-        lcd.print(&rxData[syncLocation]);
+        //loop three times... max of 3 codes possible
+        for(int j=0; j<3; j++) {
+          String codeString = "";  int codeInt;
+          boolean bufferOverflow = false;
+          //offset is 0 first loop, 4 second loop, 8 third loop
+          uint8_t indexOffset = 0;
+          if(j>0) { indexOffset = (j==1) ? 4: 8; }
+          //code is four characters
+          for(int i=0; i<4; i++) {
+            uint8_t index = syncLocation + i + indexOffset;
+            if(index < rxBufferLength) {
+              codeString += rxData[index];
+            }
+            else {
+              bufferOverflow = true;
+              break;
+            }
+          }
+          codeInt = codeString.toInt();
+          // error if index of rxData overflowed or toInt returned -1 (no codes are negative)
+          if (codeInt<0 || bufferOverflow) {
+            lcd.print("Err");
+            break;
+          }
+          else if (codeInt>0) {
+            lcd.print(codeString.toInt());
+            lcd.print(" ");
+          }
+          else {
+            // if first code is zero than there are no codes, otherwise just stop outer loop
+            if( j == 0 ) lcd.print("No Codes");
+            break;
+          }
+        }
     }
     delay(5000);  //pause so user can read codes
     if(useLCD) {
+        // clear display
+        lcd.setCursor(0, 0);
+        lcd.print("     ");
         lcd.setCursor(0, 1);
-        lcd.print("                ");  // clear codes from lower LCD line
+        lcd.print("                ");  
     }
   }
 }
@@ -294,9 +346,15 @@ void printParsedData(int _mode, int LCDlineNum) {
 void getResponse(){
   char inChar=0;
   char endCharacter = '\r';  //end of message character ('\r').
+  int loopCount = 0;
   if(mode == battModeNum) { endCharacter = 'V'; } // in battery voltage mode, look for V
   //Keep reading characters until we get the end character
   while(inChar != endCharacter){
+    loopCount++;
+    if(loopCount > 25 && mode == battModeNum) {
+      rxIndex = 0;
+      break;
+    }
     // break out of while loop if interrupt triggered
     if(modeChanged) {
       rxIndex = 0;
@@ -429,7 +487,7 @@ void resetODB() {
 
 int celciusToFahrenheit(int temp) {
   float tempC = float(temp);
-  float tempF = (TempC*1.8)+32;
+  float tempF = (tempC*1.8)+32;
   return int(tempF);
 }
 
