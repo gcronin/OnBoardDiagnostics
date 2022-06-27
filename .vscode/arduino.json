@@ -1,5 +1,5 @@
 {
-    "board": "arduino:avr:uno",
-    "sketch": "ODB.ino",
+    "board": "atmega328p-a:avr:atmega328p-a",
+    "sketch": "Firmware\\Firmware.ino",
     "port": "COM3"
 }

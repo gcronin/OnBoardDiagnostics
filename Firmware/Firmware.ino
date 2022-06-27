@@ -149,7 +149,7 @@ void displayCodes() {
   if(syncLocation != -1) {
     if(useLCD) {
         lcd.setCursor(0, 0);
-        lcd.print("Codes");
+        lcd.print("Codes:");
         lcd.setCursor(0, 1);
         //loop three times... max of 3 codes possible
         for(int j=0; j<3; j++) {
@@ -176,7 +176,7 @@ void displayCodes() {
             break;
           }
           else if (codeInt>0) {
-            lcd.print(codeString.toInt());
+            lcd.print(codeInt);
             lcd.print(" ");
           }
           else {
@@ -190,7 +190,7 @@ void displayCodes() {
     if(useLCD) {
         // clear display
         lcd.setCursor(0, 0);
-        lcd.print("     ");
+        lcd.print("      ");
         lcd.setCursor(0, 1);
         lcd.print("                ");  
     }
