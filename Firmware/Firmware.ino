@@ -3,11 +3,6 @@
 #include <SPI.h>
 #include <SD.h>
 
-/* ** MOSI - pin 11  YELLOW Pin 17
-   ** MISO - pin 12  BLUE  Pin 18
-   ** CLK - pin 13  GREEN  Pin 19
-   ** CS - pin 10  GREY Pin 16 */
-
 const int rs = 7, en = 6, d4 = 5, d5 = 4, d6 = A1, d7 = A0;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 SoftwareSerial OBD(8, 9); // RX, TX
@@ -310,29 +305,24 @@ void logSD(int _mode) {
 */
 void printParsedData(int _mode, int LCDlineNum) {
   if(useSerial) {
-        Serial.print("  ");
-        Serial.print(PIDnames[_mode]);
-        Serial.print("  ");
-        if(mode == battModeNum) Serial.println(voltage);
-        if(mode == codesModeNum) {
-          for(int i=syncLocation; i<syncLocation+4; i++) {
-            Serial.print(rxData[i]);
-          }
-          Serial.println("");
-        }
-        else Serial.println(data);
-      }
+    Serial.print("  ");
+    Serial.print(PIDnames[_mode]);
+    Serial.print("  ");
+    if(mode == battModeNum) Serial.println(voltage);
+    if(mode == codesModeNum) Serial.println(&rxData[syncLocation]);
+    else Serial.println(data);
+  }
 
-      if(useLCD) {
-        lcd.setCursor(0, LCDlineNum);
-        lcd.print(PIDnames[_mode]);
-        lcd.setCursor(6, LCDlineNum);
-        lcd.print("          ");
-        lcd.setCursor(6, LCDlineNum);
-        if(_mode == battModeNum) lcd.print(voltage);
-        if(_mode == codesModeNum) lcd.print(&rxData[syncLocation]);
-        else lcd.print(data);
-      }
+  if(useLCD) {
+    lcd.setCursor(0, LCDlineNum);
+    lcd.print(PIDnames[_mode]);
+    lcd.setCursor(6, LCDlineNum);
+    lcd.print("          ");
+    lcd.setCursor(6, LCDlineNum);
+    if(_mode == battModeNum) lcd.print(voltage);
+    if(_mode == codesModeNum) lcd.print(&rxData[syncLocation]);
+    else lcd.print(data);
+  }
 }
 
 /*!
@@ -350,6 +340,7 @@ void getResponse(){
   if(mode == battModeNum) { endCharacter = 'V'; } // in battery voltage mode, look for V
   //Keep reading characters until we get the end character
   while(inChar != endCharacter){
+    // break out in battery voltage mode if stuck
     loopCount++;
     if(loopCount > 25 && mode == battModeNum) {
       rxIndex = 0;
@@ -379,7 +370,7 @@ void getResponse(){
       }
       //Now check if we've received a space character (' ').
       else if(OBD.peek() == ' '){
-        //Clear the Serial buffer
+        //Clear the space without saving
         inChar=OBD.read();
       }
       //If we didn't get the end character or a space, just add the new character to the string.
@@ -398,22 +389,14 @@ void getResponse(){
             array index just after the expected response or -1 if not found.
 */
 int findSync(int responseLength) {
-  int location = 0;
-  int k=0;
-  char test[5]; 
+  int arrayIndex = 0;
+  int matchCount=0;
   for(int i=0; i<(rxBufferLength-responseLength); i++) {
     for(int j=0; j<responseLength; j++) {
-      test[j] = rxData[i+j];
+      if( rxData[i+j] == expResponse[j] )  matchCount++; 
     }
-    k=0;
-    for(int j=0; j<responseLength; j++) {
-      if ( test[j] == expResponse[j] )
-      {
-        k=k+1;
-      }
-    }
-    if(k == responseLength) return (location+responseLength);
-    location++;
+    if(matchCount == responseLength) return (arrayIndex+responseLength);
+    arrayIndex++;
   }
   return -1;
 }
