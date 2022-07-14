@@ -2,34 +2,42 @@
 
 // constructor
 OBD::OBD() {
-  _serialConnection = NULL;
+  _ODBConnection = NULL;
 }
 
-void OBD::init(SoftwareSerial *_serial) {
-  _serialConnection = _serial;
+void OBD::init(SoftwareSerial *_serial, HardwareSerial *_debug_connection) {
+  _ODBConnection = _serial;
+  _ODBConnection->begin(9600);
+  _debug = _debug_connection;
+  _debug->begin(9600);
 }
 
 int OBD::available() {
-  _serialConnection->available();
+  _ODBConnection->available();
 }
 
 void OBD::flush() {
-  _serialConnection->flush();
+  _ODBConnection->flush();
 }
 
 int OBD::read() {
-  _serialConnection->read();
+  _ODBConnection->read();
 }
 
 int OBD::peek() {
-  _serialConnection->peek();
+  _ODBConnection->peek();
 }
 
 int OBD::println(const String &s) {
-  _serialConnection->println(s);
+  _ODBConnection->println(s);
 }
 
+void OBD::setDebugOn() { debugLevel = true; }
+
+void OBD::setDebugOff() { debugLevel = false; }
+
 bool OBD::reset() {
+  if(debugLevel) _debug->print("Rebooting...");
   delay(2000);
   println("atz");
   char endCharacter = '>';
@@ -39,6 +47,7 @@ bool OBD::reset() {
       inChar=read();
     }
   }
+  if(debugLevel) _debug->println("done.");
 }
 
 void OBD::emptyRXBuffer() {
@@ -66,8 +75,14 @@ boolean OBD::resetCodes() {
   println(ResetCodes.commandString);
   getResponse(ResetCodes.endCharacter); getResponse(ResetCodes.endCharacter);
   char expResponse[2] = {'4', '4'};
-  if(getDataIndexInRxArray(2, &expResponse[0]) != -1)  return true; 
-  else return false;
+  if(getDataIndexInRxArray(2, &expResponse[0]) != -1)  {
+    if(debugLevel) _debug->println("Codes Reset");
+    return true; 
+  }
+  else {
+    if(debugLevel) _debug->println("Error");
+    return false;
+  }
 }
 
 void OBD::getResponse(char endCharacter){
@@ -111,7 +126,8 @@ void OBD::getResponse(char endCharacter){
 //  won't work for voltage or codes
 int OBD::getOBDData(PID _PID) {
   char expResponse[5];
-  
+
+  if(debugLevel) { _debug->print(_PID.displayText);  _debug->print(" "); }
   //request data from OBD
   println(_PID.commandString);
 
@@ -120,14 +136,23 @@ int OBD::getOBDData(PID _PID) {
   getResponse(_PID.endCharacter);
   getResponse(_PID.endCharacter);
 
+  if(debugLevel) { 
+    for(int i=0; i<rxBufferLength; i++) {  _debug->print(rxData[i]);  }
+    _debug->print(" ");
+  }
+  
   //setup expected response code... same as PID with '4' at beginning
   _PID.commandString.toCharArray(expResponse, 5);
   expResponse[0] = '4';
 
   // find expected response code in received response...compare 4 digits 
   int syncLocation = getDataIndexInRxArray(4, &expResponse[0]);
+  if(debugLevel) { _debug->print(syncLocation);  _debug->print(" "); }
+  
   if(syncLocation != -1) {
-    return _PID.parseFunction(&rxData[0], syncLocation);
+    int parsedData = _PID.parseFunction(&rxData[0], syncLocation);
+    if(debugLevel) { _debug->println(parsedData); }
+    return parsedData;
   }
   else return -1;
 }

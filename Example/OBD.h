@@ -10,9 +10,10 @@ const uint8_t rxBufferLength = 20;
 class OBD {
   
   private:
-    SoftwareSerial *_serialConnection;
+    SoftwareSerial *_ODBConnection;
+    HardwareSerial *_debug;
     char rxData[rxBufferLength] = {'>','0','1','4','1','0','C','0','C','6','A',' ','0',' ','0','C','3','1','1','\0'};
-    
+    boolean debugLevel = false;
     int println(const String &s);
     bool listen();
     virtual int available();
@@ -22,13 +23,15 @@ class OBD {
     void emptyRXBuffer();
     int getDataIndexInRxArray(int responseLength, char *expectedResponse);
     void getResponse(char endCharacter);
-    int getOBDData(PID _PID);
     
   public:
     OBD();
-    void init(SoftwareSerial *_serial);
+    void init(SoftwareSerial *_serial, HardwareSerial *_debug);
     bool reset();
     boolean resetCodes();
+    int getOBDData(PID _PID);
+    void setDebugOn();
+    void setDebugOff();
 
 };
 
