@@ -10,6 +10,8 @@ void OBD::init(SoftwareSerial *_serial, HardwareSerial *_debug_connection) {
   _ODBConnection->begin(9600);
   _debug = _debug_connection;
   _debug->begin(9600);
+  for(int i=0; i<rxBufferLength; i++) {  rxData[i]=0;  }
+  rxIndex = 0;
 }
 
 int OBD::available() {
@@ -39,15 +41,16 @@ void OBD::setDebugOff() { debugLevel = false; }
 bool OBD::reset() {
   if(debugLevel) _debug->print("Rebooting...");
   delay(2000);
+  flush();
+  emptyRXBuffer();
   println("atz");
   char endCharacter = '>';
   char inChar=0;
   while(inChar != endCharacter){
-    if(available() > 0){
-      inChar=read();
-    }
+    if(available() > 0){  inChar=read(); }
   }
   if(debugLevel) _debug->println("done.");
+  delay(1000);
 }
 
 void OBD::emptyRXBuffer() {
@@ -85,16 +88,17 @@ boolean OBD::resetCodes() {
   }
 }
 
-void OBD::getResponse(char endCharacter){
+void OBD::getResponse(char endCharacter, int timeout){
   char inChar=0;
-  int loopCount = 0;
-  char rxIndex=0;
+  int startTime = millis();
 
   //Keep reading characters until we get the end character
   while(inChar != endCharacter){
     // break out if stuck or to prevent buffer overrun
-    loopCount++;
-    if(loopCount > 50 || rxIndex > (rxBufferLength-1)) {
+    int currentTime = millis();    
+    if(currentTime - startTime > timeout  || rxIndex > (rxBufferLength-1)) {
+    //if(rxIndex > (rxBufferLength-1)) {
+      rxIndex = 0;
       break;
     }
 
@@ -106,6 +110,7 @@ void OBD::getResponse(char endCharacter){
         inChar=this->read();
         //Put the end of string character on our data string
         rxData[rxIndex]='\0';
+        rxIndex = 0;
       }
       //Now check if we've received a space character (' ').
       else if(this->peek() == ' '){
@@ -123,10 +128,15 @@ void OBD::getResponse(char endCharacter){
   }
 }
 
+void OBD::getResponse(char endCharacter){
+  getResponse(endCharacter, 2000);
+}
+
 //  won't work for voltage or codes
 int OBD::getOBDData(PID _PID) {
   char expResponse[5];
-
+  flush();
+  emptyRXBuffer();
   if(debugLevel) { _debug->print(_PID.displayText);  _debug->print(" "); }
   //request data from OBD
   println(_PID.commandString);
@@ -154,5 +164,41 @@ int OBD::getOBDData(PID _PID) {
     if(debugLevel) { _debug->println(parsedData); }
     return parsedData;
   }
-  else return -1;
+  else {
+    if(debugLevel) { _debug->println(""); }
+    return -1;
+  }
+}
+
+//  won't work for voltage or codes
+float OBD::getVoltage() {
+  char expResponse[5] = {'a','t','r','v','\0'};
+  flush();
+  emptyRXBuffer();
+  if(debugLevel) { _debug->print("Volts");  _debug->print(" "); }
+  //request data from OBD
+  println("atrv");
+  getResponse('V');
+
+  if(debugLevel) { 
+    for(int i=0; i<rxBufferLength; i++) {  _debug->print(rxData[i]);  }
+    _debug->print(" ");
+  }
+  
+  // find expected response code in received response...compare 4 digits 
+  int syncLocation = getDataIndexInRxArray(4, &expResponse[0]);
+  if(debugLevel) { _debug->print(syncLocation);  _debug->print(" "); }
+  
+  if(syncLocation != -1) {
+    String battResponse = rxData;
+    battResponse = battResponse.substring(syncLocation);
+    float voltage = battResponse.toFloat();
+    voltage = (voltage > 8 && voltage < 20) ? voltage : -1;
+    if(debugLevel) { _debug->println(voltage); }
+    return voltage;
+  }
+  else {
+    if(debugLevel) { _debug->println(""); }
+    return -1;
+  }
 }

@@ -1,3 +1,4 @@
+
 #include <SoftwareSerial.h>
 #include "OBD.h"
 
@@ -6,12 +7,17 @@ OBD OBD;
 
 void setup() {
   OBD.init(&OBD_Uart, &Serial);
-  OBD.reset();
   OBD.setDebugOn();
+  OBD.reset();
 }
 
 void loop() {
   OBD.getOBDData(RPMs);
-  delay(300);
-
+  delay(1000);
+  OBD.getOBDData(Load);
+  delay(1000);
+  OBD.getOBDData(EngineTemp);
+  delay(1000);
+  OBD.getVoltage();
+  delay(1000);  
 }

@@ -7,7 +7,7 @@ const int rs = 7, en = 6, d4 = 5, d5 = 4, d6 = A1, d7 = A0;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 SoftwareSerial OBD(8, 9); // RX, TX
 
-const boolean useSerial = false;
+const boolean useSerial = true;
 const boolean useLCD = true;
 
 // Variables for reading raw and processed data from Software Serial
@@ -208,6 +208,8 @@ void printRawData() {
 
 /*!
   @brief   Send OBD query, get response, validate by looking for echo of query
+  @note    Use of findSync is unnecessary as the buffer is cleared
+           prior to this method by emptyRXBuffer(). But it doesn't hurt. 
 */
 void getRawData(int _mode) {
   //request data from OBD
