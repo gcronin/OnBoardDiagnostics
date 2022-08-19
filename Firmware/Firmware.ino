@@ -14,19 +14,19 @@ const boolean useLCD = true;
 const uint8_t rxBufferLength = 20;
 char rxData[rxBufferLength];
 char rxIndex=0;
-int data;  float voltage;
+int data;  char voltage[5];  
 int syncLocation = -1;
 
 // Setup the available OBD codes and associated names
-const int numModes = 8;
-volatile int modeTopLine = 2; //Top LCD Line Display
-volatile int modeBottomLine = 3; //Bottom LCD Line Display
+const int numModes = 14;
+volatile int modeTopLine = 6; //Top LCD Line Display
+volatile int modeBottomLine = 2; //Bottom LCD Line Display
 int mode;
 volatile boolean modeChanged = false;
-String PIDcodes[numModes] = {"0104", "0105", "010C", "010D", "010F", "0111", "atrv", "03"};
-String PIDnames[numModes] = {"Load%", "Eng F", "RPMs ", "mph  ", "Air F", "Thrt%", "BattV", "Codes"};
-const uint8_t battModeNum = 6;
-const uint8_t codesModeNum = 7;
+String PIDcodes[numModes] = {"0104", "0105", "010C", "010D", "010F", "0111", "atrv", "010E", "0110", "0106", "0107", "0114", "0115", "03"};
+String PIDnames[numModes] = {"Load %  ", "Engine F", "Revs/Min", "Miles/Hr", "Air F   ", "Throttl%", "Batt Vlt", "Timing  ", "MAF g/s ", "SFuelTrm", "LFuelTrm", "O2Snsor1", "O2Snsor2", "Codes"};
+const uint8_t battModeNum = 6; 
+const uint8_t codesModeNum = 13;
 char expResponse[5];
 boolean evenLoop = true;
 
@@ -61,7 +61,7 @@ void loop() {
   if(syncLocation != -1) {
     printRawData();
     parseData(mode);
-    if(data != -1) {
+    if(data != -999) {
       printParsedData(mode, evenLoop);
       logSD(mode);
     }
@@ -137,59 +137,66 @@ void resetCodes() {
   @brief   read Error Codes, display
 */
 void displayCodes() {
+  char codeString[5]; codeString[4] = '\0';
+  int codes[3];
+  boolean bufferOverflow = false;
   OBD.flush();
   emptyRXBuffer();
   getRawData(codesModeNum);
   printRawData();
   if(syncLocation != -1) {
-    if(useLCD) {
-        lcd.setCursor(0, 0);
-        lcd.print("Codes:");
-        lcd.setCursor(0, 1);
-        //loop three times... max of 3 codes possible
-        for(int j=0; j<3; j++) {
-          String codeString = "";  int codeInt;
-          boolean bufferOverflow = false;
-          //offset is 0 first loop, 4 second loop, 8 third loop
-          uint8_t indexOffset = 0;
-          if(j>0) { indexOffset = (j==1) ? 4: 8; }
-          //code is four characters
-          for(int i=0; i<4; i++) {
-            uint8_t index = syncLocation + i + indexOffset;
-            if(index < rxBufferLength) {
-              codeString += rxData[index];
-            }
-            else {
-              bufferOverflow = true;
-              break;
-            }
-          }
-          codeInt = codeString.toInt();
-          // error if index of rxData overflowed or toInt returned -1 (no codes are negative)
-          if (codeInt<0 || bufferOverflow) {
-            lcd.print("Err");
-            break;
-          }
-          else if (codeInt>0) {
-            lcd.print(codeInt);
-            lcd.print(" ");
-          }
-          else {
-            // if first code is zero than there are no codes, otherwise just stop outer loop
-            if( j == 0 ) lcd.print("No Codes");
-            break;
-          }
+    //loop three times... max of 3 codes possible
+    for(int j=0; j<3; j++) {
+      //offset is 0 first loop, 4 second loop, 8 third loop
+      uint8_t indexOffset = 0;
+      if(j>0) { indexOffset = (j==1) ? 4: 8; }
+      //code is four characters
+      for(int i=0; i<4; i++) {
+        uint8_t index = syncLocation + i + indexOffset;
+        if(index < rxBufferLength) {
+          codeString[i] = rxData[index];
         }
+        else {
+          bufferOverflow = true;
+          break;
+        }
+      }
+      codes[j] = strtol(&codeString[0],0,10);
+    } 
+    
+    if(useLCD) {
+      lcd.setCursor(0, 0);
+      lcd.print("Codes ");
+      if(!bufferOverflow) {
+        lcd.print(codes[0]);
+        lcd.print(" ");
+        lcd.print(codes[1]);
+        lcd.print(" ");
+        lcd.print(codes[2]);
+      }
+      else lcd.print("Err");
+      lcd.setCursor(0, 1);
+      lcd.print(&rxData[syncLocation]);
     }
+    
+    if(useSerial) {
+      for(int j=0; j<3; j++) {
+        Serial.print(" ");
+        Serial.print(codes[j]);
+      }
+      Serial.println("");
+    }
+    
     delay(5000);  //pause so user can read codes
     if(useLCD) {
         // clear display
         lcd.setCursor(0, 0);
-        lcd.print("      ");
+        lcd.print("                ");  
         lcd.setCursor(0, 1);
         lcd.print("                ");  
     }
   }
+  else if(useSerial)  Serial.println("");
 }
 
 /*!
@@ -197,10 +204,7 @@ void displayCodes() {
 */
 void printRawData() {
   if(useSerial) {
-    for(int i=0; i<rxBufferLength; i++)
-    { 
-      Serial.print(rxData[i]);
-    }
+    Serial.print(rxData);
     Serial.print(" Index: ");
     Serial.print(syncLocation);
   }
@@ -233,41 +237,77 @@ void getRawData(int _mode) {
   @brief   parse response for our data, filter out spurious results
 */
 void parseData(int _mode) {
+  char Hex[3];  int HighByte;  int LowByte;
   switch(_mode) {
     case 0: // engine load, percent (max 100)
       data = strtol(&rxData[syncLocation],0,16)*100/255;
-      data = (abs(data) > 100) ? -1 : data;
+      data = (abs(data) > 100) ? -999 : data;
       break;
     case 1: // engine temp, oF (max 500)
       data = strtol(&rxData[syncLocation],0,16)-40;
-      data = (abs(data) > 500) ? -1 : celciusToFahrenheit(data);
+      data = (abs(data) > 500) ? -999 : celciusToFahrenheit(data);
       break;
     case 2: // RPM
       data = strtol(&rxData[syncLocation],0,16)/4;
       break;
     case 3: // speed mph (max 300 kph)
       data = strtol(&rxData[syncLocation],0,16);
-      data = (abs(data) > 300) ? -1 : kphToMph(data);
+      data = (abs(data) > 300) ? -999 : kphToMph(data);
       break;
     case 4: // air temp, oF
       data = strtol(&rxData[syncLocation],0,16)-40;
-      data = (abs(data) > 500) ? -1 : celciusToFahrenheit(data);
+      data = (abs(data) > 500) ? -999 : celciusToFahrenheit(data);
       break;
     case 5: // throttle, percent (max 100)
       data = strtol(&rxData[syncLocation],0,16)*100/255;
-      data = (abs(data) > 100) ? -1 : data;
+      data = (abs(data) > 100) ? -999 : data;
       break;
     case battModeNum: // battery voltage  (8<V<20)
-      String battResponse = rxData;
-      battResponse = battResponse.substring(syncLocation);
-      voltage = battResponse.toFloat();
-      data = (voltage > 8 && voltage < 20) ? 1 : -1;
+      for(int i =0; i<4; i++) { voltage[i] = rxData[syncLocation + i]; }
+      voltage[4] = '\0';
+      data = 1;  //(voltage > 8 && voltage < 20) ? 1 : -999;
       break; 
+    case 7: // timing, degrees
+      data = strtol(&rxData[syncLocation],0,16)/2-64;
+      data = (abs(data) > 64) ? -999 : data;
+      break;
+    case 8: //  Air Flow, g/s
+      data = strtol(&rxData[syncLocation],0,16)/100;
+      data = (data > 655 || data < 0) ? -999 : data;
+      break;
+    case 9:  // Short Fuel
+      data = (strtol(&rxData[syncLocation],0,16)-128)*100/128;
+      data = (abs(data) > 100) ? -999 : data;
+      break;
+    case 10:  // Long Fuel
+      data = (strtol(&rxData[syncLocation],0,16)-128)*100/128;
+      data = (abs(data) > 100) ? -999 : data;
+      break;
+    case 11:  // O2 Sensor 1, Volts
+      Hex[0] = rxData[syncLocation]; Hex[1] = rxData[syncLocation+1]; Hex[2] = '\0';
+      HighByte = strtol(Hex,0,16);
+      Hex[0] = rxData[syncLocation+2]; Hex[1] = rxData[syncLocation+3];
+      LowByte = strtol(Hex,0,16);
+      data = LowByte - 128;
+      data = data*HighByte;
+      data = data/256;
+      data = (abs(data) > 100) ? -999 : data;
+      break;
+    case 12: // O2 Sensor 2, Volts
+      Hex[0] = rxData[syncLocation]; Hex[1] = rxData[syncLocation+1]; Hex[2] = '\0';
+      HighByte = strtol(Hex,0,16);
+      Hex[0] = rxData[syncLocation+2]; Hex[1] = rxData[syncLocation+3];
+      LowByte = strtol(Hex,0,16);
+      data = LowByte - 128;
+      data = data*HighByte;
+      data = data/256;
+      data = (abs(data) > 100) ? -999 : data;
+      break;
     case codesModeNum: // actual codes
       data = 0;
       break;      
     default:
-      data = -1;
+      data = -999;
       break;        
   }
 }
@@ -311,18 +351,18 @@ void printParsedData(int _mode, int LCDlineNum) {
     Serial.print(PIDnames[_mode]);
     Serial.print("  ");
     if(mode == battModeNum) Serial.println(voltage);
-    if(mode == codesModeNum) Serial.println(&rxData[syncLocation]);
+    else if(mode == codesModeNum) Serial.println(&rxData[syncLocation]);
     else Serial.println(data);
   }
 
   if(useLCD) {
     lcd.setCursor(0, LCDlineNum);
     lcd.print(PIDnames[_mode]);
-    lcd.setCursor(6, LCDlineNum);
-    lcd.print("          ");
-    lcd.setCursor(6, LCDlineNum);
+    lcd.setCursor(9, LCDlineNum);
+    lcd.print("       ");
+    lcd.setCursor(9, LCDlineNum);
     if(_mode == battModeNum) lcd.print(voltage);
-    if(_mode == codesModeNum) lcd.print(&rxData[syncLocation]);
+    else if(_mode == codesModeNum) lcd.print(&rxData[syncLocation]);
     else lcd.print(data);
   }
 }
@@ -339,7 +379,7 @@ void getResponse(){
   char inChar=0;
   char endCharacter = '\r';  //end of message character ('\r').
   int loopCount = 0;
-  if(mode == battModeNum) { endCharacter = 'V'; } // in battery voltage mode, look for V
+  if(mode == battModeNum) { endCharacter = '>'; } // in battery voltage mode, look for V
   //Keep reading characters until we get the end character
   while(inChar != endCharacter){
     // break out in battery voltage mode if stuck
@@ -370,9 +410,9 @@ void getResponse(){
         //Reset the buffer index so that the next character goes back at the beginning of the string.
         rxIndex=0;
       }
-      //Now check if we've received a space character (' ').
-      else if(OBD.peek() == ' '){
-        //Clear the space without saving
+      //Now check if we've received a space character (' ') or newline.
+      else if(OBD.peek() == ' ' || OBD.peek() ==  '\r'){
+        //Clear the space/newline without saving
         inChar=OBD.read();
       }
       //If we didn't get the end character or a space, just add the new character to the string.

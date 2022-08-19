@@ -1,4 +1,0 @@
-{
-    "board": "atmega328p-a:avr:atmega328p-a",
-    "sketch": "example.ino"
-}
