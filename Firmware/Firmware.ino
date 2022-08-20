@@ -4,10 +4,10 @@
 #include <SD.h>
 
 const int rs = 7, en = 6, d4 = 5, d5 = 4, d6 = A1, d7 = A0;
-LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
+LiquidCrystal lcd(rs, en, d4, d5, d6, d7);  
 SoftwareSerial OBD(8, 9); // RX, TX
 
-const boolean useSerial = true;
+const boolean useSerial = false;
 const boolean useLCD = true;
 
 // Variables for reading raw and processed data from Software Serial
@@ -19,7 +19,7 @@ int syncLocation = -1;
 
 // Setup the available OBD codes and associated names
 const int numModes = 14;
-volatile int modeTopLine = 6; //Top LCD Line Display
+volatile int modeTopLine = 3; //Top LCD Line Display
 volatile int modeBottomLine = 2; //Bottom LCD Line Display
 int mode;
 volatile boolean modeChanged = false;
