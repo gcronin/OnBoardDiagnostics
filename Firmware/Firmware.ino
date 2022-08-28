@@ -18,13 +18,13 @@ int data;  char voltage[5];
 int syncLocation = -1;
 
 // Setup the available OBD codes and associated names
-const int numModes = 14;
-volatile int modeTopLine = 3; //Top LCD Line Display
-volatile int modeBottomLine = 2; //Bottom LCD Line Display
-int mode;
+const uint8_t numModes = 14;
+volatile uint8_t modeTopLine = 3; //Top LCD Line Display
+volatile uint8_t modeBottomLine = 2; //Bottom LCD Line Display
+uint8_t mode;
 volatile boolean modeChanged = false;
-String PIDcodes[numModes] = {"0104", "0105", "010C", "010D", "010F", "0111", "atrv", "010E", "0110", "0106", "0107", "0114", "0115", "03"};
-String PIDnames[numModes] = {"Load %  ", "Engine F", "Revs/Min", "Miles/Hr", "Air F   ", "Throttl%", "Batt Vlt", "Timing  ", "MAF g/s ", "SFuelTrm", "LFuelTrm", "O2Snsor1", "O2Snsor2", "Codes"};
+const String PIDcodes[numModes] = {"0104", "0105", "010C", "010D", "010F", "0111", "atrv", "010E", "0110", "0106", "0107", "0114", "0115", "03"};
+const String PIDnames[numModes] = {"Load %  ", "Engine F", "Revs/Min", "Miles/Hr", "Air F   ", "Throttl%", "Batt Vlt", "Timing  ", "MAF g/s ", "SFuelTrm", "LFuelTrm", "O2Snsor1", "O2Snsor2", "Codes"};
 const uint8_t battModeNum = 6; 
 const uint8_t codesModeNum = 13;
 char expResponse[5];
@@ -90,9 +90,9 @@ void readButtons() {
   if(!digitalRead(A3)) {
     if(useLCD) {
         lcd.setCursor(0, 0);
-        lcd.print("Erase Codes?");
+        lcd.print(F("Erase Codes?"));
         lcd.setCursor(0, 1);
-        lcd.print("Y=Green N=Red");
+        lcd.print(F("Y=Green N=Red"));
     }
     delay(1000);  //debounce
     while(true) {
@@ -105,9 +105,9 @@ void readButtons() {
     }
     if(useLCD) {
       lcd.setCursor(0, 0);
-      lcd.print("            ");
+      lcd.print(F("            "));
       lcd.setCursor(0, 1);
-      lcd.print("             ");
+      lcd.print(F("             "));
     }
     delay(1000);  //debounce
   }
@@ -115,7 +115,7 @@ void readButtons() {
 
 void resetCodes() {
   if(useLCD) lcd.setCursor(0, 0);
-  if(useLCD) lcd.print("Erasing Codes");
+  if(useLCD) lcd.print(F("Erasing Codes"));
   OBD.flush();
   emptyRXBuffer();
   OBD.println("04");
@@ -128,9 +128,9 @@ void resetCodes() {
   }
   delay(2000);
   if(useLCD) lcd.setCursor(0, 0);
-  if(useLCD) lcd.print("             ");
+  if(useLCD) lcd.print(F("             "));
   if(useLCD) lcd.setCursor(0, 1);
-  if(useLCD) lcd.print("             ");
+  if(useLCD) lcd.print(F("             "));
 }
 
 /*!
@@ -166,7 +166,7 @@ void displayCodes() {
     
     if(useLCD) {
       lcd.setCursor(0, 0);
-      lcd.print("Codes ");
+      lcd.print(F("Codes "));
       if(!bufferOverflow) {
         lcd.print(codes[0]);
         lcd.print(" ");
@@ -174,7 +174,7 @@ void displayCodes() {
         lcd.print(" ");
         lcd.print(codes[2]);
       }
-      else lcd.print("Err");
+      else lcd.print(F("Err"));
       lcd.setCursor(0, 1);
       lcd.print(&rxData[syncLocation]);
     }
@@ -191,9 +191,9 @@ void displayCodes() {
     if(useLCD) {
         // clear display
         lcd.setCursor(0, 0);
-        lcd.print("                ");  
+        lcd.print(F("                "));  
         lcd.setCursor(0, 1);
-        lcd.print("                ");  
+        lcd.print(F("                "));  
     }
   }
   else if(useSerial)  Serial.println("");
@@ -205,7 +205,7 @@ void displayCodes() {
 void printRawData() {
   if(useSerial) {
     Serial.print(rxData);
-    Serial.print(" Index: ");
+    Serial.print(F(" Index: "));
     Serial.print(syncLocation);
   }
 }
@@ -231,6 +231,36 @@ void getRawData(int _mode) {
   // find expected response code in received response...compare 4 digits for all modes except PID 03  = 2 digits 
   if(_mode!=codesModeNum) syncLocation = findSync(4);
   else syncLocation = findSync(2);
+}
+
+/*!
+  @brief   write data to SD card
+  @note    
+*/
+void logSD(int _mode) {
+  lcd.setCursor(15, 1);
+  lcd.print(" ");
+  if(logToSD) {
+    if(!SDinitialized) { 
+      if(SD.begin(SDchipSelectPin)) SDinitialized = true;
+    }
+    SDfile = SD.open("log.txt", FILE_WRITE);
+    if(SDfile) {
+      SDfile.print(millis());
+      SDfile.print(", ");
+      if(evenLoop) SDfile.print(", ");
+      if(_mode == battModeNum) SDfile.print(voltage);
+      else if(_mode == codesModeNum) SDfile.print(&rxData[syncLocation]);
+      else SDfile.print(data);
+      if(!evenLoop) SDfile.println(", ");
+      else SDfile.println("");
+      SDfile.close();
+      if(useLCD) {
+        lcd.setCursor(15, 1);
+        lcd.write(255); //print a block if successfully writing
+      }
+    }
+  }
 }
 
 /*!
@@ -313,43 +343,13 @@ void parseData(int _mode) {
 }
 
 /*!
-  @brief   write data to SD card
-  @note    
-*/
-void logSD(int _mode) {
-  lcd.setCursor(15, 1);
-  lcd.print(" ");
-  if(logToSD) {
-    if(!SDinitialized) { 
-      if(SD.begin(SDchipSelectPin)) SDinitialized = true;
-    }
-    SDfile = SD.open("log.txt", FILE_WRITE);
-    if(SDfile) {
-      SDfile.print(millis());
-      SDfile.print(", ");
-      if(evenLoop) SDfile.print(", ");
-      if(_mode == battModeNum) SDfile.print(voltage);
-      else if(_mode == codesModeNum) SDfile.print(&rxData[syncLocation]);
-      else SDfile.print(data);
-      if(!evenLoop) SDfile.println(", ");
-      else SDfile.println("");
-      SDfile.close();
-      if(useLCD) {
-        lcd.setCursor(15, 1);
-        lcd.write(255); //print a block if successfully writing
-      }
-    }
-  }
-}
-
-/*!
   @brief   print to LCD and/or serial depending on global variables
 */
 void printParsedData(int _mode, int LCDlineNum) {
   if(useSerial) {
-    Serial.print("  ");
+    Serial.print(F("  "));
     Serial.print(PIDnames[_mode]);
-    Serial.print("  ");
+    Serial.print(F("  "));
     if(mode == battModeNum) Serial.println(voltage);
     else if(mode == codesModeNum) Serial.println(&rxData[syncLocation]);
     else Serial.println(data);
@@ -359,7 +359,7 @@ void printParsedData(int _mode, int LCDlineNum) {
     lcd.setCursor(0, LCDlineNum);
     lcd.print(PIDnames[_mode]);
     lcd.setCursor(9, LCDlineNum);
-    lcd.print("       ");
+    lcd.print(F("       "));
     lcd.setCursor(9, LCDlineNum);
     if(_mode == battModeNum) lcd.print(voltage);
     else if(_mode == codesModeNum) lcd.print(&rxData[syncLocation]);
@@ -494,7 +494,7 @@ void emptyRXBuffer() {
 */
 void resetODB() {
   if(useLCD) lcd.setCursor(0, 0);
-  if(useLCD) lcd.print("Resetting");
+  if(useLCD) lcd.print(F("Resetting"));
   delay(2000);
   OBD.println("atz");
   char endCharacter = '>';
@@ -507,7 +507,7 @@ void resetODB() {
   }
   if(useSerial) Serial.println("");
   if(useLCD) lcd.setCursor(0, 0);
-  if(useLCD) lcd.print("         ");
+  if(useLCD) lcd.print(F("         "));
 }
 
 int celciusToFahrenheit(int temp) {
